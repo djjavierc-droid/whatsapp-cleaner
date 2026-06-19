@@ -69,7 +69,6 @@
                 android:paddingBottom="12dp"
                 android:gravity="center" />
 
-            <!-- Barra de progreso -->
             <ProgressBar
                 android:id="@+id/progressBar"
                 style="@style/Widget.AppCompat.ProgressBar.Horizontal"
@@ -92,7 +91,6 @@
                 android:visibility="gone"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Botones -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -141,6 +139,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
+            <!-- Encabezado resultados -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -173,11 +172,64 @@
                 android:background="@color/divider"
                 android:layout_marginBottom="8dp" />
 
+            <!-- Lista -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvContacts"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1" />
+
+            <!-- Separador acciones -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/divider"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Fila 1: Marcar todos + Eliminar seleccionados -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="6dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSelectAll"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Marcar todos"
+                    android:textSize="12sp"
+                    app:strokeColor="@color/whatsapp_green"
+                    android:textColor="@color/whatsapp_green"
+                    app:cornerRadius="8dp"
+                    android:layout_marginEnd="6dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnDeleteSelected"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Eliminar (0)"
+                    android:textSize="12sp"
+                    app:backgroundTint="@color/error_red"
+                    app:cornerRadius="8dp"
+                    android:enabled="false"
+                    android:alpha="0.5" />
+
+            </LinearLayout>
+
+            <!-- Fila 2: Eliminar todos -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDeleteAll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Eliminar todos"
+                android:textSize="13sp"
+                app:backgroundTint="#B91C1C"
+                app:cornerRadius="8dp" />
 
         </LinearLayout>
     </androidx.cardview.widget.CardView>

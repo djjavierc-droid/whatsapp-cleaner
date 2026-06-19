@@ -3,6 +3,7 @@
 
     <!-- Permiso para leer la agenda de contactos -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
 
     <!--
         Android 11+ (API 30+): Package Visibility.

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="whatsapp_green">#25D366</color>
+    <color name="whatsapp_dark_green">#128C7E</color>
+    <color name="whatsapp_teal">#075E54</color>
+    <color name="background">#F0F2F5</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text_primary">#1A1A1A</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="error_red">#EF4444</color>
+    <color name="divider">#E5E7EB</color>
+    <color name="avatar_color_1">#6366F1</color>
+    <color name="avatar_color_2">#EC4899</color>
+    <color name="avatar_color_3">#F59E0B</color>
+    <color name="avatar_color_4">#10B981</color>
+    <color name="avatar_color_5">#3B82F6</color>
+</resources>

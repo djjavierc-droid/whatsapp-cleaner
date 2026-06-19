@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WhatsAppCleaner" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/whatsapp_dark_green</item>
+        <item name="colorPrimaryVariant">@color/whatsapp_teal</item>
+        <item name="colorOnPrimary">@color/surface</item>
+        <item name="colorSecondary">@color/whatsapp_green</item>
+        <item name="colorOnSecondary">@color/surface</item>
+        <item name="android:statusBarColor">@color/whatsapp_teal</item>
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+</resources>

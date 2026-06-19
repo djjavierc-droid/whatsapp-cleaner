@@ -22,13 +22,7 @@ data class ScanState(
     val errorMessage: String? = null
 )
 
-enum class ScanStatus {
-    IDLE,
-    SCANNING,
-    DONE,
-    CANCELLED,
-    ERROR
-}
+enum class ScanStatus { IDLE, SCANNING, DONE, CANCELLED, ERROR }
 
 class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -37,22 +31,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     private var scanJob: Job? = null
 
-    /**
-     * Inicia el escaneo de contactos en un hilo de fondo (Coroutine en IO dispatcher).
-     *
-     * 1. Lee todos los contactos de la agenda.
-     * 2. Obtiene los números sincronizados por WhatsApp en el dispositivo.
-     * 3. Compara para encontrar los que NO tienen WhatsApp.
-     * 4. Aplica un delay aleatorio entre 4 y 5 segundos por contacto
-     *    para simular cadencia humana y proteger la cuenta.
-     */
     fun startScan() {
         if (_state.value.status == ScanStatus.SCANNING) return
 
         scanJob = viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
 
-            // Verificar que WhatsApp está instalado
             if (!ContactsManager.isWhatsAppInstalled(context)) {
                 _state.value = ScanState(
                     status = ScanStatus.ERROR,
@@ -61,7 +45,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            // Leer contactos en background
             val allContacts = withContext(Dispatchers.IO) {
                 ContactsManager.getAllContacts(context)
             }
@@ -74,14 +57,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            // Obtener números de WhatsApp (sincronizados por la app de WhatsApp)
             val whatsappNumbers = withContext(Dispatchers.IO) {
                 ContactsManager.getWhatsAppNumbers(context)
             }
 
             Log.d(TAG, "Total contactos: ${allContacts.size}, con WhatsApp: ${whatsappNumbers.size}")
 
-            // Iniciar estado de escaneo
             _state.value = ScanState(
                 status = ScanStatus.SCANNING,
                 totalContacts = allContacts.size,
@@ -91,26 +72,19 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
             val noWaList = mutableListOf<Contact>()
 
-            // Procesar cada contacto con delay anti-spam
             for ((index, contact) in allContacts.withIndex()) {
-                if (!isActive) break // Coroutine cancelada
+                if (!isActive) break
 
-                // Verificar si el número está en el conjunto de WhatsApp
                 val hasWhatsApp = whatsappNumbers.any { waNumber ->
                     numbersMatch(contact.phone, waNumber)
                 }
 
-                if (!hasWhatsApp) {
-                    noWaList.add(contact)
-                }
+                if (!hasWhatsApp) noWaList.add(contact)
 
-                // Actualizar progreso en UI thread
                 _state.value = _state.value.copy(
                     processedContacts = index + 1,
                     noWhatsAppContacts = noWaList.toList()
                 )
-
-
             }
 
             if (isActive) {
@@ -125,6 +99,21 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteContacts(contactIds: List<Long>, phones: Set<String>) {
+        viewModelScope.launch {
+            val context = getApplication<Application>().applicationContext
+            withContext(Dispatchers.IO) {
+                ContactsManager.deleteContacts(context, contactIds)
+            }
+            val updated = _state.value.noWhatsAppContacts
+                .filter { it.phone !in phones }
+            _state.value = _state.value.copy(
+                noWhatsAppContacts = updated,
+                totalContacts = _state.value.totalContacts - contactIds.size
+            )
+        }
+    }
+
     fun cancelScan() {
         scanJob?.cancel()
         _state.value = _state.value.copy(status = ScanStatus.CANCELLED)
@@ -135,17 +124,11 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         _state.value = ScanState()
     }
 
-    /**
-     * Compara dos números telefónicos de forma flexible.
-     * Elimina prefijos de país comunes y compara los últimos 9 dígitos
-     * para manejar diferencias de formato.
-     */
     private fun numbersMatch(a: String, b: String): Boolean {
         if (a == b) return true
         val cleanA = a.replace(Regex("[^0-9]"), "")
         val cleanB = b.replace(Regex("[^0-9]"), "")
         if (cleanA == cleanB) return true
-        // Comparar por los últimos 9 dígitos (número local sin código de país)
         val suffixLen = 9
         if (cleanA.length >= suffixLen && cleanB.length >= suffixLen) {
             return cleanA.takeLast(suffixLen) == cleanB.takeLast(suffixLen)

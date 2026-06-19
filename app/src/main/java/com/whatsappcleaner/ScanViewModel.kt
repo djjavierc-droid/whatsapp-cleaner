@@ -6,7 +6,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
@@ -14,10 +13,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "ScanViewModel"
-
-/** Delay en milisegundos entre la verificación de cada contacto (anti-spam). */
-private const val DELAY_MIN_MS = 4_000L
-private const val DELAY_MAX_MS = 5_000L
 
 data class ScanState(
     val status: ScanStatus = ScanStatus.IDLE,
@@ -115,13 +110,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     noWhatsAppContacts = noWaList.toList()
                 )
 
-                // Delay anti-spam: entre 4 y 5 segundos por contacto
-                // (excepto en el último)
-                if (index < allContacts.size - 1 && isActive) {
-                    val delayMs = (DELAY_MIN_MS..DELAY_MAX_MS).random()
-                    Log.d(TAG, "Esperando ${delayMs}ms antes del siguiente contacto…")
-                    delay(delayMs)
-                }
+
             }
 
             if (isActive) {

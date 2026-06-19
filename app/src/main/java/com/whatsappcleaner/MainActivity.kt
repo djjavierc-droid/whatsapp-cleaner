@@ -17,59 +17,68 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    // ─── ViewModel ───────────────────────────────────────────────────────────
     private val viewModel: ScanViewModel by viewModels()
 
-    // ─── Vistas ──────────────────────────────────────────────────────────────
     private lateinit var tvStatus: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var tvProgressText: TextView
-    private lateinit var btnScan: Button
-    private lateinit var btnCancel: Button
+    private lateinit var btnScan: MaterialButton
+    private lateinit var btnCancel: MaterialButton
     private lateinit var cardResults: CardView
     private lateinit var tvResultCount: TextView
     private lateinit var rvContacts: RecyclerView
+    private lateinit var btnSelectAll: MaterialButton
+    private lateinit var btnDeleteSelected: MaterialButton
+    private lateinit var btnDeleteAll: MaterialButton
 
-    // ─── Adapter ─────────────────────────────────────────────────────────────
-    private val adapter = ContactAdapter()
+    private val adapter = ContactAdapter { selectedCount ->
+        updateSelectionButtons(selectedCount)
+    }
 
-    // ─── Permiso READ_CONTACTS ────────────────────────────────────────────────
-    private val requestPermissionLauncher =
+    private val requestReadContacts =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) {
-                viewModel.startScan()
-            } else {
-                Toast.makeText(this, getString(R.string.permission_denied), Toast.LENGTH_LONG).show()
-            }
+            if (granted) viewModel.startScan()
+            else Toast.makeText(this, getString(R.string.permission_denied), Toast.LENGTH_LONG).show()
         }
 
-    // ─── Lifecycle ────────────────────────────────────────────────────────────
+    private val requestWriteContacts =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                pendingDeleteAction?.invoke()
+            } else {
+                Toast.makeText(this, "Permiso de escritura denegado. No se pueden eliminar contactos.", Toast.LENGTH_LONG).show()
+            }
+            pendingDeleteAction = null
+        }
+
+    private var pendingDeleteAction: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         bindViews()
         setupRecyclerView()
         setupClickListeners()
         observeViewModel()
     }
 
-    // ─── Inicialización ───────────────────────────────────────────────────────
-
     private fun bindViews() {
-        tvStatus      = findViewById(R.id.tvStatus)
-        progressBar   = findViewById(R.id.progressBar)
-        tvProgressText = findViewById(R.id.tvProgressText)
-        btnScan       = findViewById(R.id.btnScan)
-        btnCancel     = findViewById(R.id.btnCancel)
-        cardResults   = findViewById(R.id.cardResults)
-        tvResultCount = findViewById(R.id.tvResultCount)
-        rvContacts    = findViewById(R.id.rvContacts)
+        tvStatus          = findViewById(R.id.tvStatus)
+        progressBar       = findViewById(R.id.progressBar)
+        tvProgressText    = findViewById(R.id.tvProgressText)
+        btnScan           = findViewById(R.id.btnScan)
+        btnCancel         = findViewById(R.id.btnCancel)
+        cardResults       = findViewById(R.id.cardResults)
+        tvResultCount     = findViewById(R.id.tvResultCount)
+        rvContacts        = findViewById(R.id.rvContacts)
+        btnSelectAll      = findViewById(R.id.btnSelectAll)
+        btnDeleteSelected = findViewById(R.id.btnDeleteSelected)
+        btnDeleteAll      = findViewById(R.id.btnDeleteAll)
     }
 
     private fun setupRecyclerView() {
@@ -78,44 +87,113 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        btnScan.setOnClickListener   { onScanClicked() }
+        btnScan.setOnClickListener { onScanClicked() }
         btnCancel.setOnClickListener { viewModel.cancelScan() }
-    }
 
-    // ─── Lógica de permisos y escaneo ─────────────────────────────────────────
+        btnSelectAll.setOnClickListener {
+            if (adapter.getSelectedCount() == adapter.itemCount) {
+                adapter.deselectAll()
+                btnSelectAll.text = "Marcar todos"
+            } else {
+                adapter.selectAll()
+                btnSelectAll.text = "Desmarcar todos"
+            }
+        }
+
+        btnDeleteSelected.setOnClickListener {
+            val selected = adapter.getSelectedContacts()
+            if (selected.isEmpty()) return@setOnClickListener
+            showDeleteDialog(
+                message = "¿Eliminar ${selected.size} contacto(s) seleccionado(s) de tu agenda?",
+                onConfirm = {
+                    val ids    = selected.map { it.contactId }
+                    val phones = selected.map { it.phone }.toSet()
+                    withWritePermission {
+                        viewModel.deleteContacts(ids, phones)
+                        adapter.clearSelectionFor(phones)
+                        btnSelectAll.text = "Marcar todos"
+                    }
+                }
+            )
+        }
+
+        btnDeleteAll.setOnClickListener {
+            val count = adapter.itemCount
+            if (count == 0) return@setOnClickListener
+            showDeleteDialog(
+                message = "¿Eliminar los $count contactos sin WhatsApp de tu agenda?",
+                onConfirm = {
+                    val all    = (0 until adapter.itemCount).map { adapter.currentList[it] }
+                    val ids    = all.map { it.contactId }
+                    val phones = all.map { it.phone }.toSet()
+                    withWritePermission {
+                        viewModel.deleteContacts(ids, phones)
+                        adapter.deselectAll()
+                        btnSelectAll.text = "Marcar todos"
+                    }
+                }
+            )
+        }
+    }
 
     private fun onScanClicked() {
         when {
-            // Permiso ya concedido → iniciar escaneo directamente
             ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
-                    == PackageManager.PERMISSION_GRANTED -> {
-                viewModel.startScan()
-            }
-            // Mostrar diálogo explicativo antes de pedir permiso
-            shouldShowRequestPermissionRationale(Manifest.permission.READ_CONTACTS) -> {
+                    == PackageManager.PERMISSION_GRANTED -> viewModel.startScan()
+
+            shouldShowRequestPermissionRationale(Manifest.permission.READ_CONTACTS) ->
                 AlertDialog.Builder(this)
                     .setTitle(getString(R.string.app_name))
                     .setMessage(getString(R.string.permission_rationale))
                     .setPositiveButton("Continuar") { _, _ ->
-                        requestPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                        requestReadContacts.launch(Manifest.permission.READ_CONTACTS)
                     }
                     .setNegativeButton("Cancelar", null)
                     .show()
-            }
-            // Solicitar permiso directamente
-            else -> {
-                requestPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-            }
+
+            else -> requestReadContacts.launch(Manifest.permission.READ_CONTACTS)
         }
     }
 
-    // ─── Observar cambios del ViewModel ──────────────────────────────────────
+    private fun withWritePermission(action: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CONTACTS)
+            == PackageManager.PERMISSION_GRANTED) {
+            action()
+        } else {
+            pendingDeleteAction = action
+            requestWriteContacts.launch(Manifest.permission.WRITE_CONTACTS)
+        }
+    }
+
+    private fun showDeleteDialog(message: String, onConfirm: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle("Confirmar eliminación")
+            .setMessage(message)
+            .setPositiveButton("Eliminar") { _, _ -> onConfirm() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun updateSelectionButtons(selectedCount: Int) {
+        if (selectedCount == 0) {
+            btnDeleteSelected.isEnabled = false
+            btnDeleteSelected.alpha = 0.5f
+            btnDeleteSelected.text = "Eliminar (0)"
+        } else {
+            btnDeleteSelected.isEnabled = true
+            btnDeleteSelected.alpha = 1f
+            btnDeleteSelected.text = "Eliminar ($selectedCount)"
+        }
+        if (adapter.itemCount > 0 && selectedCount == adapter.itemCount) {
+            btnSelectAll.text = "Desmarcar todos"
+        } else {
+            btnSelectAll.text = "Marcar todos"
+        }
+    }
 
     private fun observeViewModel() {
         lifecycleScope.launch {
-            viewModel.state.collect { state ->
-                updateUi(state)
-            }
+            viewModel.state.collect { state -> updateUi(state) }
         }
     }
 
@@ -123,36 +201,28 @@ class MainActivity : AppCompatActivity() {
         when (state.status) {
 
             ScanStatus.IDLE -> {
-                tvStatus.text       = getString(R.string.status_ready)
-                progressBar.visibility   = View.GONE
+                tvStatus.text             = getString(R.string.status_ready)
+                progressBar.visibility    = View.GONE
                 tvProgressText.visibility = View.GONE
-                btnScan.visibility   = View.VISIBLE
-                btnScan.text         = getString(R.string.btn_start_scan)
-                btnCancel.visibility = View.GONE
-                cardResults.visibility = View.GONE
+                btnScan.visibility        = View.VISIBLE
+                btnScan.text              = getString(R.string.btn_start_scan)
+                btnCancel.visibility      = View.GONE
+                cardResults.visibility    = View.GONE
             }
 
             ScanStatus.SCANNING -> {
                 val pct = if (state.totalContacts > 0)
-                    (state.processedContacts * 100) / state.totalContacts
-                else 0
+                    (state.processedContacts * 100) / state.totalContacts else 0
 
-                tvStatus.text = getString(R.string.status_scanning)
-
-                progressBar.visibility = View.VISIBLE
-                progressBar.progress   = pct
-
+                tvStatus.text             = getString(R.string.status_scanning)
+                progressBar.visibility    = View.VISIBLE
+                progressBar.progress      = pct
                 tvProgressText.visibility = View.VISIBLE
-                tvProgressText.text = getString(
-                    R.string.progress_text,
-                    state.processedContacts,
-                    state.totalContacts
-                )
+                tvProgressText.text       = getString(R.string.progress_text,
+                    state.processedContacts, state.totalContacts)
+                btnScan.visibility        = View.GONE
+                btnCancel.visibility      = View.VISIBLE
 
-                btnScan.visibility   = View.GONE
-                btnCancel.visibility = View.VISIBLE
-
-                // Mostrar resultados parciales en tiempo real
                 if (state.noWhatsAppContacts.isNotEmpty()) {
                     cardResults.visibility = View.VISIBLE
                     tvResultCount.text     = state.noWhatsAppContacts.size.toString()
@@ -161,20 +231,15 @@ class MainActivity : AppCompatActivity() {
             }
 
             ScanStatus.DONE -> {
-                tvStatus.text = getString(R.string.status_done)
-
+                tvStatus.text             = getString(R.string.status_done)
                 progressBar.visibility    = View.VISIBLE
                 progressBar.progress      = 100
                 tvProgressText.visibility = View.VISIBLE
-                tvProgressText.text       = getString(
-                    R.string.progress_text,
-                    state.totalContacts,
-                    state.totalContacts
-                )
-
-                btnScan.visibility   = View.VISIBLE
-                btnScan.text         = getString(R.string.btn_new_scan)
-                btnCancel.visibility = View.GONE
+                tvProgressText.text       = getString(R.string.progress_text,
+                    state.totalContacts, state.totalContacts)
+                btnScan.visibility        = View.VISIBLE
+                btnScan.text              = getString(R.string.btn_new_scan)
+                btnCancel.visibility      = View.GONE
 
                 if (state.noWhatsAppContacts.isEmpty()) {
                     cardResults.visibility = View.GONE
@@ -185,7 +250,6 @@ class MainActivity : AppCompatActivity() {
                     adapter.submitList(state.noWhatsAppContacts.toList())
                 }
 
-                // Nuevo escaneo
                 btnScan.setOnClickListener {
                     viewModel.reset()
                     btnScan.setOnClickListener { onScanClicked() }
@@ -194,19 +258,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             ScanStatus.CANCELLED -> {
-                tvStatus.text = getString(R.string.status_cancelled)
-
+                tvStatus.text             = getString(R.string.status_cancelled)
                 progressBar.visibility    = View.VISIBLE
                 tvProgressText.visibility = View.VISIBLE
-                tvProgressText.text       = getString(
-                    R.string.progress_text,
-                    state.processedContacts,
-                    state.totalContacts
-                )
-
-                btnScan.visibility   = View.VISIBLE
-                btnScan.text         = getString(R.string.btn_start_scan)
-                btnCancel.visibility = View.GONE
+                tvProgressText.text       = getString(R.string.progress_text,
+                    state.processedContacts, state.totalContacts)
+                btnScan.visibility        = View.VISIBLE
+                btnScan.text              = getString(R.string.btn_start_scan)
+                btnCancel.visibility      = View.GONE
 
                 if (state.noWhatsAppContacts.isNotEmpty()) {
                     cardResults.visibility = View.VISIBLE
@@ -218,15 +277,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             ScanStatus.ERROR -> {
-                tvStatus.text = state.errorMessage ?: "Error desconocido"
-
+                tvStatus.text             = state.errorMessage ?: "Error desconocido"
                 progressBar.visibility    = View.GONE
                 tvProgressText.visibility = View.GONE
                 btnScan.visibility        = View.VISIBLE
                 btnScan.text              = getString(R.string.btn_start_scan)
                 btnCancel.visibility      = View.GONE
                 cardResults.visibility    = View.GONE
-
                 btnScan.setOnClickListener { onScanClicked() }
             }
         }

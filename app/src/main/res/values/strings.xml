@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WhatsApp Cleaner</string>
+    <string name="subtitle">Limpia tu agenda de contactos</string>
+    <string name="status_ready">Pulsa \'Iniciar Escaneo\' para analizar tu agenda.\nNecesita WhatsApp instalado en este dispositivo.</string>
+    <string name="status_scanning">Escaneando contactos…</string>
+    <string name="status_done">¡Análisis completado!</string>
+    <string name="status_cancelled">Análisis cancelado.</string>
+    <string name="status_no_whatsapp">WhatsApp no está instalado en este dispositivo.</string>
+    <string name="status_no_contacts">No se encontraron contactos en la agenda.</string>
+    <string name="btn_start_scan">Iniciar Escaneo</string>
+    <string name="btn_cancel">Cancelar</string>
+    <string name="btn_new_scan">Nuevo Escaneo</string>
+    <string name="results_title">Sin WhatsApp (Para eliminar)</string>
+    <string name="permission_rationale">Esta app necesita acceder a tus contactos para analizar cuáles no tienen WhatsApp.</string>
+    <string name="permission_denied">Permiso de contactos denegado. Ve a Configuración para habilitarlo.</string>
+    <string name="progress_text">Procesando %1$d de %2$d contactos…</string>
+    <string name="empty_results">¡Excelente! Todos tus contactos tienen WhatsApp.</string>
+</resources>

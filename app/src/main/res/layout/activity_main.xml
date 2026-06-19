@@ -182,4 +182,21 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- Footer -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@color/footer_bg"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:text="Aplicación desarrollada por Javier Soto"
+        android:textColor="@color/footer_text"
+        android:textSize="13sp"
+        android:fontFamily="sans-serif"
+        android:letterSpacing="0.02"
+        android:gravity="center" />
+
 </LinearLayout>

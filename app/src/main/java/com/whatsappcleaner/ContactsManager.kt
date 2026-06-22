@@ -9,15 +9,17 @@ object ContactsManager {
 
     private const val WHATSAPP_ACCOUNT_TYPE = "com.whatsapp"
 
+    /**
+     * Devuelve todos los contactos de la agenda con su CONTACT_ID de Android.
+     */
     fun getAllContacts(context: Context): List<Contact> {
         val contacts = mutableListOf<Contact>()
-        val seen = mutableSetOf<String>()
+        val seenIds  = mutableSetOf<Long>()
 
         val cursor: Cursor? = context.contentResolver.query(
             ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
             arrayOf(
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER,
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID
             ),
@@ -27,22 +29,20 @@ object ContactsManager {
 
         cursor?.use { c ->
             val nameIdx      = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-            val normIdx      = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER)
-            val rawIdx       = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            val numIdx       = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
             val contactIdIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
 
             while (c.moveToNext()) {
-                val name = c.getString(nameIdx)?.trim() ?: continue
-                if (name.isEmpty()) continue
+                val name      = c.getString(nameIdx)?.trim() ?: continue
+                val phone     = c.getString(numIdx)  ?: continue
+                val contactId = c.getLong(contactIdIdx)
 
-                val rawNumber  = c.getString(rawIdx) ?: continue
-                val normalized = c.getString(normIdx) ?: normalizeManual(rawNumber)
-                val key        = normalized.ifEmpty { normalizeManual(rawNumber) }
-                val contactId  = c.getLong(contactIdIdx)
+                if (name.isEmpty() || contactId <= 0) continue
 
-                if (key.isNotEmpty() && !seen.contains(key)) {
-                    seen.add(key)
-                    contacts.add(Contact(name = name, phone = key, contactId = contactId))
+                // Un contacto puede tener varios números — guardamos uno por contactId
+                if (!seenIds.contains(contactId)) {
+                    seenIds.add(contactId)
+                    contacts.add(Contact(name = name, phone = phone, contactId = contactId))
                 }
             }
         }
@@ -50,54 +50,38 @@ object ContactsManager {
         return contacts
     }
 
-    fun getWhatsAppNumbers(context: Context): Set<String> {
-        val whatsappNumbers = mutableSetOf<String>()
+    /**
+     * Devuelve el conjunto de CONTACT_IDs que WhatsApp tiene sincronizados.
+     *
+     * WhatsApp crea un RawContact con account_type = "com.whatsapp" para cada
+     * contacto que tiene cuenta. Android une ese RawContact con el contacto de
+     * la agenda bajo el mismo CONTACT_ID. No hace falta comparar números.
+     */
+    fun getWhatsAppContactIds(context: Context): Set<Long> {
+        val ids = mutableSetOf<Long>()
 
-        val rawContactIds = mutableSetOf<Long>()
-        val rawCursor: Cursor? = context.contentResolver.query(
+        val cursor: Cursor? = context.contentResolver.query(
             ContactsContract.RawContacts.CONTENT_URI,
-            arrayOf(ContactsContract.RawContacts._ID),
+            arrayOf(ContactsContract.RawContacts.CONTACT_ID),
             "${ContactsContract.RawContacts.ACCOUNT_TYPE} = ?",
             arrayOf(WHATSAPP_ACCOUNT_TYPE),
             null
         )
-        rawCursor?.use { c ->
-            val idIdx = c.getColumnIndex(ContactsContract.RawContacts._ID)
-            while (c.moveToNext()) rawContactIds.add(c.getLong(idIdx))
-        }
 
-        if (rawContactIds.isEmpty()) return emptySet()
-
-        // SQLite limita IN() a 999 elementos — procesamos en bloques
-        val chunks = rawContactIds.toList().chunked(999)
-        for (chunk in chunks) {
-            val idList = chunk.joinToString(",")
-            val dataCursor: Cursor? = context.contentResolver.query(
-                ContactsContract.Data.CONTENT_URI,
-                arrayOf(
-                    ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER,
-                    ContactsContract.CommonDataKinds.Phone.NUMBER
-                ),
-                "${ContactsContract.Data.RAW_CONTACT_ID} IN ($idList)" +
-                        " AND ${ContactsContract.Data.MIMETYPE} = ?",
-                arrayOf(ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE),
-                null
-            )
-            dataCursor?.use { c ->
-                val normIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER)
-                val rawIdx  = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                while (c.moveToNext()) {
-                    val normalized = c.getString(normIdx) ?: ""
-                    val raw        = c.getString(rawIdx) ?: ""
-                    val key        = normalized.ifEmpty { normalizeManual(raw) }
-                    if (key.isNotEmpty()) whatsappNumbers.add(key)
-                }
+        cursor?.use { c ->
+            val idx = c.getColumnIndex(ContactsContract.RawContacts.CONTACT_ID)
+            while (c.moveToNext()) {
+                val id = c.getLong(idx)
+                if (id > 0) ids.add(id)
             }
         }
 
-        return whatsappNumbers
+        return ids
     }
 
+    /**
+     * Elimina contactos de la agenda por su CONTACT_ID.
+     */
     fun deleteContacts(context: Context, contactIds: List<Long>) {
         for (id in contactIds) {
             if (id > 0) {
@@ -117,8 +101,4 @@ object ContactsManager {
             catch (_: Exception) { false }
         }
     }
-
-    private fun normalizeManual(raw: String): String =
-        raw.replace(Regex("[^0-9+]"), "")
-            .let { if (it.startsWith("+")) it else it.replace(Regex("^0+"), "") }
 }

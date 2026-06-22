@@ -14,6 +14,5 @@
     <color name="avatar_color_3">#F59E0B</color>
     <color name="avatar_color_4">#10B981</color>
     <color name="avatar_color_5">#3B82F6</color>
-    <color name="footer_bg">#8696A0</color>
-    <color name="footer_text">#FFFFFF</color>
+    <color name="footer_text">#667781</color>
 </resources>

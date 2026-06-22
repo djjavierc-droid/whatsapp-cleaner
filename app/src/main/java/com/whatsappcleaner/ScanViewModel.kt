@@ -45,7 +45,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            // Cargar datos en hilo de IO
             val allContacts = withContext(Dispatchers.IO) {
                 ContactsManager.getAllContacts(context)
             }
@@ -58,11 +57,13 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val whatsappNumbers = withContext(Dispatchers.IO) {
-                ContactsManager.getWhatsAppNumbers(context)
+            // Obtener los CONTACT_IDs que WhatsApp tiene sincronizados.
+            // Comparar por ID es 100% preciso — no depende del formato del número.
+            val whatsappIds: Set<Long> = withContext(Dispatchers.IO) {
+                ContactsManager.getWhatsAppContactIds(context)
             }
 
-            Log.d(TAG, "Total: ${allContacts.size}, WhatsApp: ${whatsappNumbers.size}")
+            Log.d(TAG, "Total agenda: ${allContacts.size} | Con WhatsApp: ${whatsappIds.size}")
 
             _state.value = ScanState(
                 status = ScanStatus.SCANNING,
@@ -71,19 +72,18 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 noWhatsAppContacts = emptyList()
             )
 
-            // Procesar en hilo de CPU para no bloquear la UI
-            val noWaList = withContext(Dispatchers.Default) {
+            // Filtrar en hilo de CPU — O(1) por contacto gracias al HashSet
+            val noWaList: List<Contact> = withContext(Dispatchers.Default) {
                 val result = mutableListOf<Contact>()
                 for ((index, contact) in allContacts.withIndex()) {
                     if (!isActive) break
 
-                    val hasWhatsApp = whatsappNumbers.any { waNumber ->
-                        numbersMatch(contact.phone, waNumber)
+                    if (!whatsappIds.contains(contact.contactId)) {
+                        result.add(contact)
                     }
-                    if (!hasWhatsApp) result.add(contact)
 
-                    // Actualizar UI cada 30 contactos (no en cada iteración)
-                    if ((index + 1) % 30 == 0 || index == allContacts.size - 1) {
+                    // Actualizar UI cada 50 contactos para no saturar el hilo principal
+                    if ((index + 1) % 50 == 0 || index == allContacts.size - 1) {
                         val snapshot = result.toList()
                         withContext(Dispatchers.Main) {
                             _state.value = _state.value.copy(
@@ -130,17 +130,5 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     fun reset() {
         scanJob?.cancel()
         _state.value = ScanState()
-    }
-
-    private fun numbersMatch(a: String, b: String): Boolean {
-        if (a == b) return true
-        val cleanA = a.replace(Regex("[^0-9]"), "")
-        val cleanB = b.replace(Regex("[^0-9]"), "")
-        if (cleanA == cleanB) return true
-        val suffixLen = 9
-        if (cleanA.length >= suffixLen && cleanB.length >= suffixLen) {
-            return cleanA.takeLast(suffixLen) == cleanB.takeLast(suffixLen)
-        }
-        return false
     }
 }

@@ -45,6 +45,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
+            // Cargar datos en hilo de IO
             val allContacts = withContext(Dispatchers.IO) {
                 ContactsManager.getAllContacts(context)
             }
@@ -61,7 +62,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 ContactsManager.getWhatsAppNumbers(context)
             }
 
-            Log.d(TAG, "Total contactos: ${allContacts.size}, con WhatsApp: ${whatsappNumbers.size}")
+            Log.d(TAG, "Total: ${allContacts.size}, WhatsApp: ${whatsappNumbers.size}")
 
             _state.value = ScanState(
                 status = ScanStatus.SCANNING,
@@ -70,29 +71,37 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 noWhatsAppContacts = emptyList()
             )
 
-            val noWaList = mutableListOf<Contact>()
+            // Procesar en hilo de CPU para no bloquear la UI
+            val noWaList = withContext(Dispatchers.Default) {
+                val result = mutableListOf<Contact>()
+                for ((index, contact) in allContacts.withIndex()) {
+                    if (!isActive) break
 
-            for ((index, contact) in allContacts.withIndex()) {
-                if (!isActive) break
+                    val hasWhatsApp = whatsappNumbers.any { waNumber ->
+                        numbersMatch(contact.phone, waNumber)
+                    }
+                    if (!hasWhatsApp) result.add(contact)
 
-                val hasWhatsApp = whatsappNumbers.any { waNumber ->
-                    numbersMatch(contact.phone, waNumber)
+                    // Actualizar UI cada 30 contactos (no en cada iteración)
+                    if ((index + 1) % 30 == 0 || index == allContacts.size - 1) {
+                        val snapshot = result.toList()
+                        withContext(Dispatchers.Main) {
+                            _state.value = _state.value.copy(
+                                processedContacts = index + 1,
+                                noWhatsAppContacts = snapshot
+                            )
+                        }
+                    }
                 }
-
-                if (!hasWhatsApp) noWaList.add(contact)
-
-                _state.value = _state.value.copy(
-                    processedContacts = index + 1,
-                    noWhatsAppContacts = noWaList.toList()
-                )
+                result.toList()
             }
 
             if (isActive) {
                 _state.value = _state.value.copy(
                     status = ScanStatus.DONE,
-                    noWhatsAppContacts = noWaList.toList()
+                    noWhatsAppContacts = noWaList
                 )
-                Log.d(TAG, "Escaneo completado. Sin WhatsApp: ${noWaList.size}")
+                Log.d(TAG, "Completado. Sin WhatsApp: ${noWaList.size}")
             } else {
                 _state.value = _state.value.copy(status = ScanStatus.CANCELLED)
             }
@@ -105,8 +114,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) {
                 ContactsManager.deleteContacts(context, contactIds)
             }
-            val updated = _state.value.noWhatsAppContacts
-                .filter { it.phone !in phones }
+            val updated = _state.value.noWhatsAppContacts.filter { it.phone !in phones }
             _state.value = _state.value.copy(
                 noWhatsAppContacts = updated,
                 totalContacts = _state.value.totalContacts - contactIds.size

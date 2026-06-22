@@ -68,27 +68,30 @@ object ContactsManager {
 
         if (rawContactIds.isEmpty()) return emptySet()
 
-        val idList = rawContactIds.joinToString(",")
-        val dataCursor: Cursor? = context.contentResolver.query(
-            ContactsContract.Data.CONTENT_URI,
-            arrayOf(
-                ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER,
-                ContactsContract.CommonDataKinds.Phone.NUMBER
-            ),
-            "${ContactsContract.Data.RAW_CONTACT_ID} IN ($idList)" +
-                    " AND ${ContactsContract.Data.MIMETYPE} = ?",
-            arrayOf(ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE),
-            null
-        )
-
-        dataCursor?.use { c ->
-            val normIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER)
-            val rawIdx  = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-            while (c.moveToNext()) {
-                val normalized = c.getString(normIdx) ?: ""
-                val raw        = c.getString(rawIdx) ?: ""
-                val key        = normalized.ifEmpty { normalizeManual(raw) }
-                if (key.isNotEmpty()) whatsappNumbers.add(key)
+        // SQLite limita IN() a 999 elementos — procesamos en bloques
+        val chunks = rawContactIds.toList().chunked(999)
+        for (chunk in chunks) {
+            val idList = chunk.joinToString(",")
+            val dataCursor: Cursor? = context.contentResolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                "${ContactsContract.Data.RAW_CONTACT_ID} IN ($idList)" +
+                        " AND ${ContactsContract.Data.MIMETYPE} = ?",
+                arrayOf(ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE),
+                null
+            )
+            dataCursor?.use { c ->
+                val normIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER)
+                val rawIdx  = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (c.moveToNext()) {
+                    val normalized = c.getString(normIdx) ?: ""
+                    val raw        = c.getString(rawIdx) ?: ""
+                    val key        = normalized.ifEmpty { normalizeManual(raw) }
+                    if (key.isNotEmpty()) whatsappNumbers.add(key)
+                }
             }
         }
 
